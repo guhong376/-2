@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>租房数据分析系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .chart-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .chart {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            min-height: 400px;
+        }
+        .chart-title {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .chart-content {
+            height: 400px;
+        }
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .stats-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            min-height: 150px;
+        }
+        .stats-title {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .stats-content {
+            text-align: center;
+            font-size: 18px;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-text {
+            color: #666;
+        }
+        .error-message {
+            color: #e74c3c;
+            text-align: center;
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>租房数据分析系统</h1>
+            <p>基于链家网房源数据的统计分析</p>
+        </div>
+        
+        <div class="chart-container">
+            <div class="chart">
+                <div class="chart-title">面积与价格关系</div>
+                <div id="area-price-chart" class="chart-content"></div>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">加载中...</div>
+                </div>
+                <div class="error-message"></div>
+            </div>
+            <div class="chart">
+                <div class="chart-title">房价分布</div>
+                <div id="price-distribution-chart" class="chart-content"></div>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">加载中...</div>
+                </div>
+                <div class="error-message"></div>
+            </div>
+            <div class="chart">
+                <div class="chart-title">朝向与价格关系</div>
+                <div id="direction-price-chart" class="chart-content"></div>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">加载中...</div>
+                </div>
+                <div class="error-message"></div>
+            </div>
+            <div class="chart">
+                <div class="chart-title">户型与价格关系</div>
+                <div id="house-type-chart" class="chart-content"></div>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">加载中...</div>
+                </div>
+                <div class="error-message"></div>
+            </div>
+        </div>
+        
+        <div class="stats-container">
+            <div class="stats-card">
+                <div class="stats-title">地铁对房价的影响</div>
+                <div id="metro-stats" class="stats-content"></div>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">加载中...</div>
+                </div>
+                <div class="error-message"></div>
+            </div>
+            <div class="stats-card">
+                <div class="stats-title">面积与价格相关性</div>
+                <div id="correlation-stats" class="stats-content"></div>
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">加载中...</div>
+                </div>
+                <div class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化图表
+        const charts = {
+            areaPrice: echarts.init(document.getElementById('area-price-chart')),
+            priceDistribution: echarts.init(document.getElementById('price-distribution-chart')),
+            directionPrice: echarts.init(document.getElementById('direction-price-chart')),
+            houseType: echarts.init(document.getElementById('house-type-chart'))
+        };
+
+        // 显示加载动画
+        function showLoading(element) {
+            element.querySelector('.loading').style.display = 'block';
+            element.querySelector('.error-message').style.display = 'none';
+        }
+
+        // 隐藏加载动画
+        function hideLoading(element) {
+            element.querySelector('.loading').style.display = 'none';
+        }
+
+        // 显示错误信息
+        function showError(element, message) {
+            element.querySelector('.loading').style.display = 'none';
+            element.querySelector('.error-message').textContent = message;
+            element.querySelector('.error-message').style.display = 'block';
+        }
+
+        // 加载面积与价格数据
+        function loadAreaPriceData() {
+            const chart = document.getElementById('area-price-chart').parentElement;
+            showLoading(chart);
+            
+            axios.get('/api/price_by_area')
+                .then(response => {
+                    const data = response.data;
+                    if (!data.x || !data.y) {
+                        throw new Error('数据格式不正确');
+                    }
+                    
+                    charts.areaPrice.setOption({
+                        title: {
+                            text: `面积与价格相关性: ${data.correlation.toFixed(3)}`,
+                            left: 'center'
+                        },
+                        tooltip: {
+                            trigger: 'axis',
+                            formatter: function(params) {
+                                return `面积: ${params[0].value[0].toFixed(1)}平方米<br/>价格: ${params[0].value[1].toFixed(1)}万元`;
+                            }
+                        },
+                        xAxis: {
+                            type: 'value',
+                            name: '面积(平方米)',
+                            nameLocation: 'middle',
+                            nameGap: 30,
+                            axisLabel: {
+                                formatter: '{value}'
+                            }
+                        },
+                        yAxis: {
+                            type: 'value',
+                            name: '价格(万元)',
+                            nameLocation: 'middle',
+                            nameGap: 40,
+                            axisLabel: {
+                                formatter: '{value}'
+                            }
+                        },
+                        series: [{
+                            type: 'scatter',
+                            data: data.x.map((x, i) => [x, data.y[i]]),
+                            symbolSize: 8,
+                            itemStyle: {
+                                color: '#3498db',
+                                opacity: 0.6
+                            },
+                            emphasis: {
+                                itemStyle: {
+                                    opacity: 1
+                                }
+                            }
+                        }]
+                    });
+                    hideLoading(chart);
+                })
+                .catch(error => {
+                    console.error('加载面积与价格数据失败:', error);
+                    showError(chart, '加载失败，请刷新页面重试');
+                });
+        }
+
+        // 加载价格分布数据
+        function loadPriceDistributionData() {
+            const chart = document.getElementById('price-distribution-chart').parentElement;
+            showLoading(chart);
+            
+            axios.get('/api/price_distribution')
+                .then(response => {
+                    const data = response.data;
+                    if (!data.bins || !data.counts) {
+                        throw new Error('数据格式不正确');
+                    }
+                    
+                    // 创建价格区间标签
+                    const labels = data.bins.map((bin, i) => {
+                        if (i === data.bins.length - 1) return null;
+                        return `${bin.toFixed(0)}-${data.bins[i+1].toFixed(0)}万`;
+                    }).filter(label => label !== null);
+                    
+                    charts.priceDistribution.setOption({
+                        tooltip: {
+                            trigger: 'axis',
+                            formatter: function(params) {
+                                return `${params[0].name}<br/>数量: ${params[0].value}`;
+                            }
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: labels,
+                            name: '价格区间',
+                            axisLabel: {
+                                interval: 0,
+                                rotate: 45
+                            }
+                        },
+                        yAxis: {
+                            type: 'value',
+                            name: '数量'
+                        },
+                        series: [{
+                            type: 'bar',
+                            data: data.counts,
+                            itemStyle: {
+                                color: '#3498db'
+                            }
+                        }]
+                    });
+                    hideLoading(chart);
+                })
+                .catch(error => {
+                    console.error('加载价格分布数据失败:', error);
+                    showError(chart, '加载失败，请刷新页面重试');
+                });
+        }
+
+        // 加载朝向与价格数据
+        function loadDirectionPriceData() {
+            const chart = document.getElementById('direction-price-chart').parentElement;
+            showLoading(chart);
+            
+            axios.get('/api/price_by_direction')
+                .then(response => {
+                    const data = response.data;
+                    charts.directionPrice.setOption({
+                        tooltip: {
+                            trigger: 'axis'
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: data.directions,
+                            name: '朝向'
+                        },
+                        yAxis: {
+                            type: 'value',
+                            name: '平均价格(万元)'
+                        },
+                        series: [{
+                            type: 'bar',
+                            data: data.prices
+                        }]
+                    });
+                    hideLoading(chart);
+                })
+                .catch(error => {
+                    showError(chart, '加载失败，请刷新页面重试');
+                });
+        }
+
+        // 加载户型与价格数据
+        function loadHouseTypeData() {
+            const chart = document.getElementById('house-type-chart').parentElement;
+            showLoading(chart);
+            
+            axios.get('/api/price_by_house_type')
+                .then(response => {
+                    const data = response.data;
+                    charts.houseType.setOption({
+                        tooltip: {
+                            trigger: 'axis'
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: data.types,
+                            name: '户型'
+                        },
+                        yAxis: {
+                            type: 'value',
+                            name: '平均价格(万元)'
+                        },
+                        series: [{
+                            type: 'bar',
+                            data: data.prices
+                        }]
+                    });
+                    hideLoading(chart);
+                })
+                .catch(error => {
+                    showError(chart, '加载失败，请刷新页面重试');
+                });
+        }
+
+        // 加载地铁分析数据
+        function loadMetroAnalysisData() {
+            const stats = document.getElementById('metro-stats').parentElement;
+            showLoading(stats);
+            
+            axios.get('/api/metro_analysis')
+                .then(response => {
+                    const data = response.data;
+                    document.getElementById('metro-stats').innerHTML = `
+                        <p>靠近地铁房源: ${data.metro_count}套</p>
+                        <p>平均价格: ${data.metro_avg.toFixed(2)}万</p>
+                        <p>非地铁房源: ${data.non_metro_count}套</p>
+                        <p>平均价格: ${data.non_metro_avg.toFixed(2)}万</p>
+                    `;
+                    hideLoading(stats);
+                })
+                .catch(error => {
+                    showError(stats, '加载失败，请刷新页面重试');
+                });
+        }
+
+        // 加载相关性数据
+        function loadCorrelationData() {
+            const stats = document.getElementById('correlation-stats').parentElement;
+            showLoading(stats);
+            
+            axios.get('/api/price_by_area')
+                .then(response => {
+                    const data = response.data;
+                    document.getElementById('correlation-stats').innerHTML = `
+                        <p>面积与价格相关系数: ${data.correlation}</p>
+                    `;
+                    hideLoading(stats);
+                })
+                .catch(error => {
+                    showError(stats, '加载失败，请刷新页面重试');
+                });
+        }
+
+        // 加载所有数据
+        function loadAllData() {
+            loadAreaPriceData();
+            loadPriceDistributionData();
+            loadDirectionPriceData();
+            loadHouseTypeData();
+            loadMetroAnalysisData();
+            loadCorrelationData();
+        }
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', loadAllData);
+
+        // 响应式调整
+        window.addEventListener('resize', function() {
+            Object.values(charts).forEach(chart => chart.resize());
+        });
+    </script>
+</body>
+</html> 
